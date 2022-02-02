@@ -6,6 +6,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
+        with:
+          submodules: 'true'
       - uses: docker://lucteo/action-cxx-toolkit.clang12:latest
         with:
           cc: clang-12
@@ -17,4 +19,4 @@ jobs:
       - uses: docker://lucteo/action-cxx-toolkit.main:latest
         with:
           checks: clang-format
-          clangformatdirs: src test
+          clangformatdirs: src
