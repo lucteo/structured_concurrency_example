@@ -1,0 +1,3 @@
+[submodule "external/p2300"]
+	path = external/p2300
+	url = https://github.com/brycelelbach/wg21_p2300_std_execution.git
