@@ -44,6 +44,9 @@ target_include_directories(image_server PRIVATE
                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/p2300/include/>
                            )
 
+# Depend on asio
+target_link_libraries(image_server PRIVATE CONAN_PKG::asio)
+
 # Ensure that we link with the threading library
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
