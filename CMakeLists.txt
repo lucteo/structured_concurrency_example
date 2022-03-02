@@ -22,6 +22,10 @@ message(STATUS "Conan libcxx     : ${CONAN_SETTINGS_COMPILER_LIBCXX}")
 message(STATUS)
 
 set(sourceFiles
+    src/http_server/create_response.cpp
+    src/http_server/request_parser.cpp
+    src/http_server/to_buffers.cpp
+
     src/main.cpp
     )
 
