@@ -4,23 +4,17 @@
 #include "write_http_response.hpp"
 #include "handle_request.hpp"
 #include "profiling.hpp"
-
 #include "io/async_accept.hpp"
 
 #include <execution.hpp>
 #include <task.hpp>
 #include <schedulers/static_thread_pool.hpp>
 
-#include <cstdio>
-#include <algorithm>
-#include <thread>
-#include <chrono>
-
 #include <signal.h>
 
 namespace ex = std::execution;
-using namespace std::chrono_literals;
 
+//! Returns a sender for an HTTP response with 500 status code
 auto just_500_response() {
     auto resp = http_server::create_response(http_server::status_code::s_500_internal_server_error);
     return ex::just(std::move(resp));
@@ -53,29 +47,20 @@ auto listener(unsigned short port, io::io_context& ctx, example::static_thread_p
     listen_sock.bind(port);
     listen_sock.listen();
 
-    while (true) {
-        io::connection conn{-1};
-        try {
-            conn = co_await io::async_accept(ctx, listen_sock);
-        } catch (const std::exception& e) {
-            std::printf("Exception caught: %s; aborting\n", e.what());
-            break;
-        }
-        try {
-            // Create a connection data object with important objects for the connection
-            conn_data data{std::move(conn), ctx, pool};
+    while (!ctx.is_stopped()) {
+        // Accept one incoming connection
+        io::connection conn = co_await io::async_accept(ctx, listen_sock);
 
-            // Handle the logic for this connection
-            ex::sender auto snd =                                //
-                    ex::transfer_just(pool.get_scheduler())      //
-                    | ex::let_value([data = std::move(data)]() { //
-                          return handle_connection(data);
-                      });
-            ex::start_detached(std::move(snd));
-        } catch (const std::exception& e) {
-            PROFILING_SCOPE_N("error");
-            std::printf("Exception caught: %s; waiting for next connection\n", e.what());
-        }
+        // Create a connection data object with important objects for the connection
+        conn_data data{std::move(conn), ctx, pool};
+
+        // Handle the logic for this connection
+        ex::sender auto snd =                                //
+                ex::just()                                   //
+                | ex::let_value([data = std::move(data)]() { //
+                      return handle_connection(data);
+                  });
+        ex::start_detached(std::move(snd));
     }
     co_return true;
 }
@@ -99,21 +84,29 @@ auto set_sig_handler(io::io_context& ctx, int signo) -> void {
         throw std::system_error(std::error_code(errno, std::system_category()));
 }
 
-int main() {
-    PROFILING_SCOPE();
-    unsigned short port = 8080;
-    // Create a pool of threads to handle most of the work
-    example::static_thread_pool pool{8};
+auto get_main_sender() {
+    return ex::just() | ex::then([] {
+        PROFILING_SCOPE();
+        unsigned short port = 8080;
 
-    // Create the I/O context object, used to handle async I/O
-    io::io_context ctx;
-    set_sig_handler(ctx, SIGTERM);
+        // Create a pool of threads to handle most of the work
+        example::static_thread_pool pool{8};
 
-    // Start a listener on our I/O execution context
-    ex::sender auto snd = ex::on(ctx.get_scheduler(), listener(port, ctx, pool));
-    ex::start_detached(std::move(snd));
+        // Create the I/O context object, used to handle async I/O
+        io::io_context ctx;
+        set_sig_handler(ctx, SIGTERM);
 
-    // Run the I/O execution context until we are stopped (by a signal)
-    ctx.run();
+        // Start a listener on our I/O execution context
+        ex::sender auto snd = ex::on(ctx.get_scheduler(), listener(port, ctx, pool));
+        ex::start_detached(std::move(snd));
+
+        // Run the I/O execution context until we are stopped (by a signal)
+        ctx.run();
+        return 0;
+    });
+}
+
+auto main() -> int {
+    std::this_thread::sync_wait(get_main_sender());
     return 0;
 }
