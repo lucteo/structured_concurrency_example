@@ -53,8 +53,8 @@ void print_request(const http_server::http_request& req) {
     std::printf("%s\n", req.body_.c_str());
 }
 
-auto handle_request(io::io_context& ctx, const io::connection& conn,
-        http_server::http_request req) -> task<http_server::http_response> {
+auto handle_request(io::io_context& ctx, const io::connection& conn, http_server::http_request req)
+        -> task<http_server::http_response> {
     PROFILING_SCOPE();
     std::printf("Incoming request:\n");
     print_request(req);
