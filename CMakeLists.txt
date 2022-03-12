@@ -26,6 +26,10 @@ set(sourceFiles
     src/http_server/request_parser.cpp
     src/http_server/to_buffers.cpp
 
+    src/io/detail/poll_io_loop.cpp
+    src/io/listening_socket.cpp
+    src/io/connection.cpp
+
     src/main.cpp
     )
 
@@ -43,13 +47,18 @@ message(STATUS "Build date       : ${image_server_BUILD_DATE}")
 message(STATUS "Build year       : ${image_server_BUILD_YEAR}")
 message(STATUS)
 
-# Declare the public include directories
+# The include directories for image_server
 target_include_directories(image_server PRIVATE
-                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/p2300/include/>
+                           ${CMAKE_CURRENT_SOURCE_DIR}/src/
+                           ${CMAKE_CURRENT_SOURCE_DIR}/external/p2300/include/
+                           ${CMAKE_CURRENT_SOURCE_DIR}/external/p2300/examples/
                            )
 
-# Depend on asio
-target_link_libraries(image_server PRIVATE CONAN_PKG::asio)
+# Profiling
+if (TARGET CONAN_PKG::tracy-interface)
+    target_link_libraries(image_server PRIVATE CONAN_PKG::tracy-interface)
+    target_compile_definitions(image_server PRIVATE PROFILING_ENABLED=1)
+endif ()
 
 # Ensure that we link with the threading library
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)

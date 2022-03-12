@@ -3,18 +3,25 @@
 #include "http_server/create_response.hpp"
 #include "http_server/to_buffers.hpp"
 
-#include <execution.hpp>
+#include "io/async_accept.hpp"
+#include "io/async_read.hpp"
+#include "io/async_write.hpp"
+#include "profiling.hpp"
 
-#include <asio/io_context.hpp>
-#include <asio/signal_set.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <asio/ip/tcp.hpp>
-#include <asio/write.hpp>
-#include <asio/thread_pool.hpp>
+#include <execution.hpp>
+#include <task.hpp>
+#include <schedulers/static_thread_pool.hpp>
+
 #include <cstdio>
-#include <iostream>
 #include <algorithm>
+
+#include <thread>
+#include <chrono>
+
+#include <signal.h>
+
+namespace ex = std::execution;
+using namespace std::chrono_literals;
 
 void print_request(const http_server::http_request& req) {
     // Print first line
@@ -58,81 +65,108 @@ void print_request(const http_server::http_request& req) {
     std::printf("%s\n", req.body_.c_str());
 }
 
-asio::const_buffer sv_to_asio(std::string_view in) {
-    return asio::buffer(in);
-}
-
-void to_asio_buffers(const std::vector<std::string_view> in, std::vector<asio::const_buffer>& out) {
-    out.reserve(in.size());
-    std::transform(in.begin(), in.end(), std::back_inserter(out), &sv_to_asio);
-}
-
 //! Handles one connection from the client
-asio::awaitable<void> handle_connection(asio::ip::tcp::socket socket) {
+task<bool> handle_connection(io::io_context& ctx, io::connection conn) {
     std::vector<std::string_view> out_buffers;
-    std::vector<asio::const_buffer> out_asio_buffers;
     try {
         // Read the input request
         http_server::request_parser parser;
         std::optional<http_server::http_request> req;
-        char data_buf[1024];
+        char buf[1024];
+        io::out_buffer out_buf{buf};
         while (!req) {
             // Read the input request, in packets, and parse each packet
-            std::size_t n =
-                    co_await socket.async_read_some(asio::buffer(data_buf), asio::use_awaitable);
-            std::string_view data{data_buf, n};
+            std::size_t n = co_await io::async_read(ctx, conn, out_buf);
+            auto data = std::string_view{buf, n};
             auto r = parser.parse_next_packet(data);
             req.reset();
             req.emplace(std::move(r.value()));
         }
 
         // Process the request
-        std::printf("Incoming request:\n");
-        print_request(req.value());
+        {
+            PROFILING_SCOPE_N("process request");
+            std::printf("Incoming request:\n");
+            print_request(req.value());
+        }
 
         // Generate the output
         auto resp = http_server::create_response(http_server::status_code::s_200_ok);
         http_server::to_buffers(resp, out_buffers);
-        to_asio_buffers(out_buffers, out_asio_buffers);
-        co_await asio::async_write(socket, out_asio_buffers, asio::use_awaitable);
-        std::printf("Done handling request.\n");
+        for (auto buf : out_buffers) {
+            /*std::size_t written =*/co_await io::async_write(ctx, conn, buf);
+        }
 
         // Close the connection after writing the response
-        socket.close();
+        conn.close();
     } catch (std::exception& e) {
         std::printf("Exception caught: %s\n", e.what());
     }
+    conn.close();
+    co_return true;
 }
 
-//! Start the listener. This will accept the incoming connections.
-asio::awaitable<void> listener(unsigned short port, asio::thread_pool& pool) {
-    auto executor = co_await asio::this_coro::executor;
-    asio::ip::tcp::acceptor acceptor{executor, {asio::ip::tcp::v4(), port}};
-    for (;;) {
-        asio::ip::tcp::socket socket = co_await acceptor.async_accept(asio::use_awaitable);
-        // Handle the logic for this connection
-        asio::co_spawn(pool, handle_connection(std::move(socket)), asio::detached);
+task<bool> listener(unsigned short port, io::io_context& ctx, example::static_thread_pool& pool) {
+    // Create a listening socket
+    io::listening_socket listen_sock;
+    listen_sock.bind(port);
+    listen_sock.listen();
+
+    while (true) {
+        io::connection c{-1};
+        try {
+            c = co_await io::async_accept(ctx, listen_sock);
+        } catch (const std::exception& e) {
+            std::printf("Exception caught: %s; aborting\n", e.what());
+            break;
+        }
+        try {
+            // Handle the logic for this connection
+            ex::sender auto snd =
+                    ex::on(pool.get_scheduler(), handle_connection(ctx, std::move(c)));
+            ex::start_detached(std::move(snd));
+        } catch (const std::exception& e) {
+            PROFILING_SCOPE_N("error");
+            std::printf("Exception caught: %s; waiting for next connection\n", e.what());
+        }
     }
+    co_return true;
+}
+
+static io::io_context* g_ctx{nullptr};
+
+auto sig_handler(int signo, siginfo_t* info, void* context) -> void {
+    PROFILING_SCOPE();
+    PROFILING_SET_TEXT_FMT(12, "sig=%d", signo);
+    if (signo == SIGTERM && g_ctx)
+        g_ctx->stop();
+}
+
+auto set_sig_handler(io::io_context& ctx, int signo) -> void {
+    g_ctx = &ctx;
+    struct sigaction act {};
+    act.sa_flags = SA_SIGINFO;
+    act.sa_sigaction = &sig_handler;
+    int rc = sigaction(SIGTERM, &act, nullptr);
+    if (rc < 0)
+        throw std::system_error(std::error_code(errno, std::system_category()));
 }
 
 int main() {
+    PROFILING_SCOPE();
     unsigned short port = 8080;
-    try {
-        // Create a pool of threads to handle most of the wor
-        asio::thread_pool pool{8};
-        // Create an I/O context, with just one thread performing the I/O
-        asio::io_context io_context{1};
-        // When receiving SIGINT and SIGTERM, close the I/O context
-        asio::signal_set signals(io_context, SIGINT, SIGTERM);
-        signals.async_wait([&](auto, auto) { io_context.stop(); });
+    // Create a pool of threads to handle most of the work
+    example::static_thread_pool pool{8};
 
-        // Start listening on our port
-        asio::co_spawn(io_context, listener(port, pool), asio::detached);
+    // Create the I/O context object, used to handle async I/O
+    io::io_context ctx;
+    set_sig_handler(ctx, SIGTERM);
 
-        // Run the I/O job on the main thread
-        io_context.run();
-    } catch (const std::exception& e) {
-        std::printf("Exception caught: %s\n", e.what());
-    }
+    // Start a listener on our I/O execution context
+    ex::sender auto snd = ex::on(ctx.get_scheduler(), listener(port, ctx, pool));
+    ex::start_detached(std::move(snd));
+
+    // Run the I/O execution context until we are stopped (by a signal)
+    ctx.run();
     return 0;
 }

@@ -15,8 +15,8 @@ class StructuredConcurrencyExampleRecipe(ConanFile):
    generators = "cmake"
    build_policy = "missing"   # Some of the dependencies don't have builds for all our targets
 
-   options = {"shared": [True, False], "fPIC": [True, False]}
-   default_options = {"shared": False, "fPIC": True}
+   options = {"shared": [True, False], "fPIC": [True, False], "with_profiling": [True, False]}
+   default_options = {"shared": False, "fPIC": True, "with_profiling": False}
 
    exports_sources = ("include/*", "CMakeLists.txt")
 
@@ -24,7 +24,8 @@ class StructuredConcurrencyExampleRecipe(ConanFile):
       self.version = "0.1.0"
 
    def build_requirements(self):
-      self.build_requires("asio/1.21.0")
+      if self.options.with_profiling:
+         self.build_requires("tracy-interface/0.1.0")
 
    def config_options(self):
        if self.settings.os == "Windows":
@@ -44,6 +45,7 @@ class StructuredConcurrencyExampleRecipe(ConanFile):
 
    def _configure_cmake(self):
       cmake = CMake(self)
+      cmake.definitions["structured_concurrency_example.with_profiling"] = self.options.with_profiling
       if self.settings.compiler == "Visual Studio" and self.options.shared:
          cmake.definitions["CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS"] = True
       cmake.configure(source_folder=None)
