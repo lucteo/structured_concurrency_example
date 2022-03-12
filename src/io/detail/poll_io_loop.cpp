@@ -79,8 +79,10 @@ auto poll_io_loop::run() -> std::size_t {
     PROFILING_SCOPE_N("exiting I/O loop");
     // If we have a stop signal, and still have outstanding operations, cancel them
     for (oper_body_base* op_body : poll_opers_) {
-        op_body->set_stopped();
-        num_completed++;
+        if (op_body) {
+            op_body->set_stopped();
+            num_completed++;
+        }
     }
 
     return num_completed;
