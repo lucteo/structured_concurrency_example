@@ -35,6 +35,11 @@ public:
     //! Stops processing any more operations
     auto stop() noexcept -> void;
 
+    //! Check if we were told to stop
+    auto is_stopped() const noexcept -> bool {
+        return should_stop_.load(std::memory_order_acquire);
+    }
+
     //! Add an I/O operation to be executed into our loop
     //! The body will be called multiple times, until the operation succeeds (body function returns
     //! true)

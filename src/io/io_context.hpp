@@ -26,6 +26,9 @@ public:
     //! Tells the I/O loop to stop.
     auto stop() noexcept -> void { io_loop_.stop(); }
 
+    //! Check if we were told to stop
+    auto is_stopped() const noexcept -> bool { return io_loop_.is_stopped(); }
+
     class scheduler;
 
     //! Get a scheduler object associated with this I/O context
