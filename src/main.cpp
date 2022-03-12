@@ -1,10 +1,10 @@
 
-#include "http_server/request_parser.hpp"
+#include "read_http_request.hpp"
+
 #include "http_server/create_response.hpp"
 #include "http_server/to_buffers.hpp"
 
 #include "io/async_accept.hpp"
-#include "io/async_read.hpp"
 #include "io/async_write.hpp"
 #include "profiling.hpp"
 
@@ -70,24 +70,13 @@ task<bool> handle_connection(io::io_context& ctx, io::connection conn) {
     std::vector<std::string_view> out_buffers;
     try {
         // Read the input request
-        http_server::request_parser parser;
-        std::optional<http_server::http_request> req;
-        char buf[1024];
-        io::out_buffer out_buf{buf};
-        while (!req) {
-            // Read the input request, in packets, and parse each packet
-            std::size_t n = co_await io::async_read(ctx, conn, out_buf);
-            auto data = std::string_view{buf, n};
-            auto r = parser.parse_next_packet(data);
-            req.reset();
-            req.emplace(std::move(r.value()));
-        }
+        http_server::http_request req = co_await read_http_request(ctx, conn);
 
         // Process the request
         {
             PROFILING_SCOPE_N("process request");
             std::printf("Incoming request:\n");
-            print_request(req.value());
+            print_request(req);
         }
 
         // Generate the output
