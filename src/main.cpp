@@ -22,12 +22,27 @@
 namespace ex = std::execution;
 using namespace std::chrono_literals;
 
+auto just_500_response() {
+    auto resp = http_server::create_response(http_server::status_code::s_500_internal_server_error);
+    return ex::just(std::move(resp));
+}
+
 //! Handles one connection from the client
-auto handle_connection(io::io_context& ctx, io::connection conn) -> task<bool> {
-    http_server::http_request req = co_await read_http_request(ctx, conn);
-    auto resp = co_await handle_request(ctx, conn, std::move(req));
-    co_await write_http_response(ctx, conn, std::move(resp));
-    co_return true;
+auto handle_connection(io::io_context& ctx, const io::connection& conn) {
+    // First read the HTTP request from the connection
+    return read_http_request(ctx, conn)
+           // Handle the request
+           | ex::let_value([&ctx, &conn](http_server::http_request req) {
+                 return handle_request(ctx, conn, std::move(req));
+             })
+           // If we have any errors, convert them to 500 error responses
+           | ex::let_error([](std::exception_ptr) { return just_500_response(); })
+           // If we are somehow cancelled, issue a 500 error response
+           | ex::let_stopped([]() { return just_500_response(); })
+           // Write the response back to the client
+           | ex::let_value([&ctx, &conn](http_server::http_response resp) {
+                 return write_http_response(ctx, conn, std::move(resp));
+             });
 }
 
 auto listener(unsigned short port, io::io_context& ctx, example::static_thread_pool& pool)
@@ -47,8 +62,11 @@ auto listener(unsigned short port, io::io_context& ctx, example::static_thread_p
         }
         try {
             // Handle the logic for this connection
-            ex::sender auto snd =
-                    ex::on(pool.get_scheduler(), handle_connection(ctx, std::move(c)));
+            ex::sender auto snd =                                //
+                    ex::transfer_just(pool.get_scheduler())      //
+                    | ex::let_value([&ctx, c = std::move(c)]() { //
+                          return handle_connection(ctx, c);
+                      });
             ex::start_detached(std::move(snd));
         } catch (const std::exception& e) {
             PROFILING_SCOPE_N("error");
