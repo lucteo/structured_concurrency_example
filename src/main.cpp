@@ -1,12 +1,11 @@
 
+#include "conn_data.hpp"
 #include "read_http_request.hpp"
 #include "write_http_response.hpp"
 #include "handle_request.hpp"
-#include "conn_data.hpp"
+#include "profiling.hpp"
 
 #include "io/async_accept.hpp"
-#include "io/async_write.hpp"
-#include "profiling.hpp"
 
 #include <execution.hpp>
 #include <task.hpp>
@@ -14,7 +13,6 @@
 
 #include <cstdio>
 #include <algorithm>
-
 #include <thread>
 #include <chrono>
 
@@ -32,6 +30,8 @@ auto just_500_response() {
 auto handle_connection(const conn_data& cdata) {
     // First read the HTTP request from the connection
     return read_http_request(cdata.io_ctx_, cdata.conn_)
+           // Move to the worker pool
+           | ex::transfer(cdata.pool_.get_scheduler())
            // Handle the request
            | ex::let_value([&cdata](http_server::http_request req) {
                  return handle_request(cdata, std::move(req));

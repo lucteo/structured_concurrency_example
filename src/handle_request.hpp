@@ -11,6 +11,10 @@
 #include <task.hpp>
 
 #include <cstdio>
+#include <thread>
+#include <chrono>
+
+using namespace std::chrono_literals;
 
 void print_request(const http_server::http_request& req) {
     // Print first line
@@ -59,5 +63,6 @@ auto handle_request(const conn_data& cdata, http_server::http_request req)
     PROFILING_SCOPE();
     std::printf("Incoming request:\n");
     print_request(req);
+    std::this_thread::sleep_for(1s);
     co_return http_server::create_response(http_server::status_code::s_200_ok);
 }
