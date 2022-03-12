@@ -5,6 +5,7 @@
 #include "http_server/create_response.hpp"
 #include "io/io_context.hpp"
 #include "io/connection.hpp"
+#include "conn_data.hpp"
 #include "profiling.hpp"
 
 #include <task.hpp>
@@ -53,7 +54,7 @@ void print_request(const http_server::http_request& req) {
     std::printf("%s\n", req.body_.c_str());
 }
 
-auto handle_request(io::io_context& ctx, const io::connection& conn, http_server::http_request req)
+auto handle_request(const conn_data& cdata, http_server::http_request req)
         -> task<http_server::http_response> {
     PROFILING_SCOPE();
     std::printf("Incoming request:\n");

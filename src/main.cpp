@@ -2,6 +2,7 @@
 #include "read_http_request.hpp"
 #include "write_http_response.hpp"
 #include "handle_request.hpp"
+#include "conn_data.hpp"
 
 #include "io/async_accept.hpp"
 #include "io/async_write.hpp"
@@ -28,20 +29,20 @@ auto just_500_response() {
 }
 
 //! Handles one connection from the client
-auto handle_connection(io::io_context& ctx, const io::connection& conn) {
+auto handle_connection(const conn_data& cdata) {
     // First read the HTTP request from the connection
-    return read_http_request(ctx, conn)
+    return read_http_request(cdata.io_ctx_, cdata.conn_)
            // Handle the request
-           | ex::let_value([&ctx, &conn](http_server::http_request req) {
-                 return handle_request(ctx, conn, std::move(req));
+           | ex::let_value([&cdata](http_server::http_request req) {
+                 return handle_request(cdata, std::move(req));
              })
            // If we have any errors, convert them to 500 error responses
            | ex::let_error([](std::exception_ptr) { return just_500_response(); })
            // If we are somehow cancelled, issue a 500 error response
            | ex::let_stopped([]() { return just_500_response(); })
            // Write the response back to the client
-           | ex::let_value([&ctx, &conn](http_server::http_response resp) {
-                 return write_http_response(ctx, conn, std::move(resp));
+           | ex::let_value([&cdata](http_server::http_response resp) {
+                 return write_http_response(cdata.io_ctx_, cdata.conn_, std::move(resp));
              });
 }
 
@@ -53,19 +54,22 @@ auto listener(unsigned short port, io::io_context& ctx, example::static_thread_p
     listen_sock.listen();
 
     while (true) {
-        io::connection c{-1};
+        io::connection conn{-1};
         try {
-            c = co_await io::async_accept(ctx, listen_sock);
+            conn = co_await io::async_accept(ctx, listen_sock);
         } catch (const std::exception& e) {
             std::printf("Exception caught: %s; aborting\n", e.what());
             break;
         }
         try {
+            // Create a connection data object with important objects for the connection
+            conn_data data{std::move(conn), ctx, pool};
+
             // Handle the logic for this connection
             ex::sender auto snd =                                //
                     ex::transfer_just(pool.get_scheduler())      //
-                    | ex::let_value([&ctx, c = std::move(c)]() { //
-                          return handle_connection(ctx, c);
+                    | ex::let_value([data = std::move(data)]() { //
+                          return handle_connection(data);
                       });
             ex::start_detached(std::move(snd));
         } catch (const std::exception& e) {
