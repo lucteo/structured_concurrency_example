@@ -60,20 +60,6 @@ auto poll_io_loop::run() -> std::size_t {
     while (!should_stop_.load(std::memory_order_acquire)) {
         if (run_one())
             num_completed++;
-        else {
-            // Do we still have outstanding operations to serve?
-            if (!poll_data_.empty()) {
-                std::this_thread::sleep_for(0ms);
-
-            } else {
-                // Try to wait for new requests
-                std::unique_lock lock{in_bottleneck_};
-                if (in_opers_.empty()) {
-                    PROFILING_SCOPE_N("waiting for I/O operations");
-                    cv_.wait(lock);
-                }
-            }
-        }
     }
 
     PROFILING_SCOPE_N("exiting I/O loop");
@@ -98,7 +84,6 @@ auto poll_io_loop::add_io_oper(native_file_desc_t fd, oper_type t, oper_body_bas
     std::scoped_lock lock{in_bottleneck_};
     short event = t == oper_type::write ? POLLOUT : POLLIN;
     in_opers_.emplace_back(fd, event, body);
-    cv_.notify_one();
     const char msg = 1;
     write(poll_wake_fd_[1], &msg, 1);
     PROFILING_SET_TEXT_FMT(32, "fd=%d", fd);
@@ -108,7 +93,6 @@ auto poll_io_loop::add_non_io_oper(oper_body_base* body) -> void {
     PROFILING_SCOPE();
     std::scoped_lock lock{in_bottleneck_};
     in_opers_.emplace_back(-1, 0, body);
-    cv_.notify_one();
     const char msg = 1;
     write(poll_wake_fd_[1], &msg, 1);
 }

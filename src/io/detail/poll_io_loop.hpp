@@ -67,7 +67,6 @@ private:
     // IO and non-IO operations created by various threads, not yet consumed by our loop
     std::vector<io_oper> in_opers_;
     std::mutex in_bottleneck_;
-    std::condition_variable cv_;
 
     // input operations for which we have ownership
     std::vector<io_oper> owned_in_opers_;
