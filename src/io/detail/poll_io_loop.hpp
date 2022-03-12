@@ -70,6 +70,7 @@ private:
 
     // input operations for which we have ownership
     std::vector<io_oper> owned_in_opers_;
+    std::vector<io_oper>::const_iterator next_op_to_process_;
 
     // data for which we call poll; the two vectors are kept in sync
     std::vector<pollfd> poll_data_;
@@ -78,6 +79,7 @@ private:
     std::size_t check_completions_start_idx_{0};
 
     auto check_in_ops() -> void;
+    auto handle_one_owned_in_op() -> bool;
     auto check_for_one_io_completion() -> bool;
     auto do_poll() -> bool;
 };

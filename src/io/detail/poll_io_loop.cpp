@@ -22,6 +22,8 @@ poll_io_loop::poll_io_loop() {
     poll_data_.reserve(expected_max_pending_ops);
     poll_opers_.reserve(expected_max_pending_ops);
 
+    next_op_to_process_ = owned_in_opers_.begin();
+
     int rc = pipe(poll_wake_fd_);
     if (rc != 0)
         throw std::system_error(std::error_code(errno, std::system_category()));
@@ -38,13 +40,20 @@ auto poll_io_loop::run_one() -> bool {
 
     // Now try to execute some outstanding ops
     while (true) {
-        // Check if we have new ops, to move them on the processing for this thread
-        check_in_ops();
-        PROFILING_PLOT_INT("I/O ops", int(poll_data_.size()));
-        if (poll_data_.size() <= 1)
-            return false;
+        // If there are owned input ops, handle them before checking for new ops
+        if (handle_one_owned_in_op())
+            return true;
 
-        // Check if have any completions
+        // Check if we have new ops, to move them on the processing for this thread
+        PROFILING_PLOT_INT("I/O ops", int(poll_data_.size()) - 1);
+        check_in_ops();
+        PROFILING_PLOT_INT("I/O ops", int(poll_data_.size()) - 1);
+
+        // Check for newly added owned input ops
+        if (handle_one_owned_in_op())
+            return true;
+
+        // Check if we have any completions
         if (check_for_one_io_completion())
             return true;
         // when calling do_poll, all events in poll_data_ are checked
@@ -99,40 +108,34 @@ auto poll_io_loop::add_non_io_oper(oper_body_base* body) -> void {
 
 auto poll_io_loop::check_in_ops() -> void {
     PROFILING_SCOPE();
-    while (true) {
-        owned_in_opers_.clear();
-        {
-            // Quickly steal the items from the input vector, while under the lock
-            std::scoped_lock lock{in_bottleneck_};
-            owned_in_opers_.swap(in_opers_);
-        }
+    owned_in_opers_.clear();
+    {
+        // Quickly steal the items from the input vector, while under the lock
+        std::scoped_lock lock{in_bottleneck_};
+        owned_in_opers_.swap(in_opers_);
+    }
+    next_op_to_process_ = owned_in_opers_.begin();
+}
 
-        // If we don't have any input operations, exit
-        if (owned_in_opers_.empty())
-            break;
-
-        // Start the newly added operations
-        {
-            PROFILING_SCOPE_N("handle input opers");
-            auto new_size = poll_opers_.size() + owned_in_opers_.size();
-            poll_data_.reserve(new_size);
-            poll_opers_.reserve(new_size);
-            for (const io_oper& op : owned_in_opers_) {
-                if (op.fd_ < 0) {
-                    // Simply run the non-IO operations; don't care about the result
-                    op.body_->try_run();
-                } else {
-                    // If the I/O operation did not complete instantly, add it to our lists used
-                    // when polling
-                    if (!op.body_->try_run()) {
-                        poll_data_.push_back(pollfd{op.fd_, op.events_, 0});
-                        poll_opers_.push_back(op.body_);
-                    }
-                }
+auto poll_io_loop::handle_one_owned_in_op() -> bool {
+    PROFILING_SCOPE();
+    if (next_op_to_process_ != owned_in_opers_.end()) {
+        const io_oper& op = *next_op_to_process_;
+        next_op_to_process_++;
+        if (op.fd_ < 0) {
+            // Simply run the non-IO operations; don't care about the result
+            op.body_->try_run();
+        } else {
+            // If the I/O operation did not complete instantly, add it to our lists used
+            // when polling
+            if (!op.body_->try_run()) {
+                poll_data_.push_back(pollfd{op.fd_, op.events_, 0});
+                poll_opers_.push_back(op.body_);
             }
         }
-        // After executing this, we might have new in operations, so loop again
+        return true;
     }
+    return false;
 }
 
 auto poll_io_loop::check_for_one_io_completion() -> bool {
