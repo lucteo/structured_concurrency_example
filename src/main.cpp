@@ -1,9 +1,7 @@
 
 #include "read_http_request.hpp"
 #include "write_http_response.hpp"
-
-#include "http_server/create_response.hpp"
-#include "http_server/to_buffers.hpp"
+#include "handle_request.hpp"
 
 #include "io/async_accept.hpp"
 #include "io/async_write.hpp"
@@ -24,72 +22,16 @@
 namespace ex = std::execution;
 using namespace std::chrono_literals;
 
-void print_request(const http_server::http_request& req) {
-    // Print first line
-    switch (req.method_) {
-    case http_server::http_method::get:
-        std::printf("GET %s HTTP/1.1\n", req.uri_.c_str());
-        break;
-    case http_server::http_method::head:
-        std::printf("HEAD %s HTTP/1.1\n", req.uri_.c_str());
-        break;
-    case http_server::http_method::post:
-        std::printf("POST %s HTTP/1.1\n", req.uri_.c_str());
-        break;
-    case http_server::http_method::put:
-        std::printf("PUT %s HTTP/1.1\n", req.uri_.c_str());
-        break;
-    case http_server::http_method::delete_method:
-        std::printf("DELETE %s HTTP/1.1\n", req.uri_.c_str());
-        break;
-    case http_server::http_method::connect:
-        std::printf("CONNECT %s HTTP/1.1\n", req.uri_.c_str());
-        break;
-    case http_server::http_method::options:
-        std::printf("OPTIONS %s HTTP/1.1\n", req.uri_.c_str());
-        break;
-    case http_server::http_method::trace:
-        std::printf("TRACE %s HTTP/1.1\n", req.uri_.c_str());
-        break;
-    case http_server::http_method::patch:
-        std::printf("PATCH %s HTTP/1.1\n", req.uri_.c_str());
-        break;
-    }
-
-    // Print headers
-    for (const http_server::header& h : req.headers_) {
-        std::printf("%s: %s\n", h.name_.c_str(), h.value_.c_str());
-    }
-    std::printf("\n");
-
-    // Print the body
-    std::printf("%s\n", req.body_.c_str());
-}
-
 //! Handles one connection from the client
-task<bool> handle_connection(io::io_context& ctx, io::connection conn) {
-    std::vector<std::string_view> out_buffers;
-    try {
-        // Read the input request
-        http_server::http_request req = co_await read_http_request(ctx, conn);
-
-        // Process the request
-        {
-            PROFILING_SCOPE_N("process request");
-            std::printf("Incoming request:\n");
-            print_request(req);
-        }
-
-        // Generate the output
-        auto resp = http_server::create_response(http_server::status_code::s_200_ok);
-        co_await write_http_response(ctx, conn, std::move(resp));
-    } catch (std::exception& e) {
-        std::printf("Exception caught: %s\n", e.what());
-    }
+auto handle_connection(io::io_context& ctx, io::connection conn) -> task<bool> {
+    http_server::http_request req = co_await read_http_request(ctx, conn);
+    auto resp = co_await handle_request(ctx, conn, std::move(req));
+    co_await write_http_response(ctx, conn, std::move(resp));
     co_return true;
 }
 
-task<bool> listener(unsigned short port, io::io_context& ctx, example::static_thread_pool& pool) {
+auto listener(unsigned short port, io::io_context& ctx, example::static_thread_pool& pool)
+        -> task<bool> {
     // Create a listening socket
     io::listening_socket listen_sock;
     listen_sock.bind(port);

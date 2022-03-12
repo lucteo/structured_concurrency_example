@@ -8,8 +8,8 @@
 
 #include <task.hpp>
 
-auto write_http_response(io::io_context& ctx, const io::connection& conn, http_server::http_response&& resp)
-        -> task<std::size_t> {
+auto write_http_response(io::io_context& ctx, const io::connection& conn,
+        http_server::http_response&& resp) -> task<std::size_t> {
     std::vector<std::string_view> out_buffers;
     http_server::to_buffers(resp, out_buffers);
     std::size_t bytes_written{0};
