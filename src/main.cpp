@@ -1,5 +1,6 @@
 
 #include "read_http_request.hpp"
+#include "write_http_response.hpp"
 
 #include "http_server/create_response.hpp"
 #include "http_server/to_buffers.hpp"
@@ -81,17 +82,10 @@ task<bool> handle_connection(io::io_context& ctx, io::connection conn) {
 
         // Generate the output
         auto resp = http_server::create_response(http_server::status_code::s_200_ok);
-        http_server::to_buffers(resp, out_buffers);
-        for (auto buf : out_buffers) {
-            /*std::size_t written =*/co_await io::async_write(ctx, conn, buf);
-        }
-
-        // Close the connection after writing the response
-        conn.close();
+        co_await write_http_response(ctx, conn, std::move(resp));
     } catch (std::exception& e) {
         std::printf("Exception caught: %s\n", e.what());
     }
-    conn.close();
     co_return true;
 }
 
