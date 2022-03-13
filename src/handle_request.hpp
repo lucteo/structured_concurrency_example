@@ -63,6 +63,9 @@ auto handle_request(const conn_data& cdata, http_server::http_request req)
     PROFILING_SCOPE();
     std::printf("Incoming request:\n");
     print_request(req);
+#if HAS_OPENCV
+    std::printf("we have OpenCV\n");
+#endif
     std::this_thread::sleep_for(1s);
     co_return http_server::create_response(http_server::status_code::s_200_ok);
 }

@@ -62,8 +62,12 @@ endif ()
 
 # OpenCV & libcurl
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(DEPS REQUIRED IMPORTED_TARGET opencv4 libcurl)
-target_link_libraries(image_server PRIVATE PkgConfig::DEPS)
+pkg_check_modules(DEPS IMPORTED_TARGET opencv4 libcurl)
+if (DEPS_FOUND)
+    target_compile_definitions(image_server PRIVATE HAS_OPENCV=1)
+    target_compile_definitions(image_server PRIVATE HAS_LIBCURL=1)
+    target_link_libraries(image_server PRIVATE PkgConfig::DEPS)
+endif ()
 
 # Ensure that we link with the threading library
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
