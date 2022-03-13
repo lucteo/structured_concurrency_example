@@ -1,4 +1,5 @@
 #include "request_parser.hpp"
+#include "profiling.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -30,6 +31,7 @@ std::pair<http_method, bool> parse_method(std::string_view method_str) {
 } // namespace
 
 std::optional<http_request> request_parser::parse_next_packet(std::string_view data) {
+    PROFILING_SCOPE();
     if (state_ == parse_state::done)
         return {};
 
@@ -110,8 +112,10 @@ bool request_parser::add_current_line() {
             std::transform(name.begin(), name.end(), name.begin(), std::tolower);
             // Check for content-length
             std::string val{hval};
-            if (name == "content-length")
+            if (name == "content-length") {
                 body_remaining_ = static_cast<size_t>(std::stoull(val));
+                body_.reserve(body_remaining_);
+            }
 
             // Add the header
             headers_.push_back(header{std::move(name), std::move(val)});

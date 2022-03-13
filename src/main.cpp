@@ -51,6 +51,8 @@ auto listener(unsigned short port, io::io_context& ctx, example::static_thread_p
         // Accept one incoming connection
         io::connection conn = co_await io::async_accept(ctx, listen_sock);
 
+        PROFILING_SCOPE_N("connection accepted");
+
         // Create a connection data object with important objects for the connection
         conn_data data{std::move(conn), ctx, pool};
 

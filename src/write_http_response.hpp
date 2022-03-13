@@ -10,11 +10,13 @@
 
 auto write_http_response(io::io_context& ctx, const io::connection& conn,
         http_server::http_response resp) -> task<std::size_t> {
+    { PROFILING_SCOPE_N("write_http_response -- start"); }
     std::vector<std::string_view> out_buffers;
     http_server::to_buffers(resp, out_buffers);
     std::size_t bytes_written{0};
     for (auto buf : out_buffers) {
         bytes_written += co_await io::async_write(ctx, conn, buf);
+        PROFILING_SCOPE_N("write_http_response -- written some data");
     }
     co_return bytes_written;
 }

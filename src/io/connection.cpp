@@ -1,4 +1,5 @@
 #include "connection.hpp"
+#include "profiling.hpp"
 
 #include <unistd.h>
 
@@ -19,6 +20,7 @@ auto connection::operator=(connection&& other) -> connection& {
 }
 
 auto connection::close() -> void {
+    PROFILING_SCOPE();
     ::close(fd_);
     fd_ = 0;
 }

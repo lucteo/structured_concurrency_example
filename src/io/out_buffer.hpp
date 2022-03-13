@@ -25,6 +25,10 @@ public:
         : data_(data)
         , size_(std::min(N * sizeof(T), max_size)) {}
 
+    out_buffer(std::string& str) noexcept
+        : data_(str.data())
+        , size_(str.capacity()) {}
+
     auto data() const noexcept -> char* { return data_; }
     auto size() const noexcept -> std::size_t { return size_; }
 };
