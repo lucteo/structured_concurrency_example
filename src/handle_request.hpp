@@ -6,6 +6,7 @@
 #include "io/io_context.hpp"
 #include "io/connection.hpp"
 #include "conn_data.hpp"
+#include "parsed_uri.hpp"
 #include "profiling.hpp"
 
 #include <task.hpp>
@@ -55,7 +56,8 @@ void print_request(const http_server::http_request& req) {
     std::printf("\n");
 
     // Print the body
-    std::printf("%s\n", req.body_.c_str());
+    if (!req.body_.empty())
+        std::printf("Body size: %d\n", int(req.body_.size()));
 }
 
 auto handle_request(const conn_data& cdata, http_server::http_request req)
@@ -66,6 +68,10 @@ auto handle_request(const conn_data& cdata, http_server::http_request req)
 #if HAS_OPENCV
     std::printf("we have OpenCV\n");
 #endif
+    auto puri = parse_uri(req.uri_);
+    std::printf("Path: %s\n", std::string(puri.path_).c_str());
+    for (auto p: puri.params_)
+        std::printf("  %s=%s\n", std::string(p.name_).c_str(), std::string(p.value_).c_str());
     std::this_thread::sleep_for(1s);
     co_return http_server::create_response(http_server::status_code::s_200_ok);
 }

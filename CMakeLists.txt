@@ -31,6 +31,7 @@ set(sourceFiles
     src/io/connection.cpp
 
     src/main.cpp
+    src/parsed_uri.cpp
     )
 
 add_executable(image_server ${sourceFiles})

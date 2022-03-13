@@ -84,7 +84,7 @@ bool request_parser::add_current_line() {
         // Parse the URI
         auto pos0 = pos + 1;
         pos = std::min(line.find(" HTTP/", pos0), line.size());
-        uri_ = line.substr(pos0, pos);
+        uri_ = line.substr(pos0, pos - pos0);
 
         // Move to the next line
         state_ = parse_state::header_lines;
