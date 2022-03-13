@@ -70,7 +70,7 @@ auto handle_request(const conn_data& cdata, http_server::http_request req)
 #endif
     auto puri = parse_uri(req.uri_);
     std::printf("Path: %s\n", std::string(puri.path_).c_str());
-    for (auto p: puri.params_)
+    for (auto p : puri.params_)
         std::printf("  %s=%s\n", std::string(p.name_).c_str(), std::string(p.value_).c_str());
     std::this_thread::sleep_for(1s);
     co_return http_server::create_response(http_server::status_code::s_200_ok);
