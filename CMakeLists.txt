@@ -60,6 +60,11 @@ if (TARGET CONAN_PKG::tracy-interface)
     target_compile_definitions(image_server PRIVATE PROFILING_ENABLED=1)
 endif ()
 
+# OpenCV & libcurl
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(DEPS REQUIRED IMPORTED_TARGET opencv4 libcurl)
+target_link_libraries(image_server PRIVATE PkgConfig::DEPS)
+
 # Ensure that we link with the threading library
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
