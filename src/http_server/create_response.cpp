@@ -7,8 +7,9 @@ namespace http_server {
 http_response create_response(status_code sc) { return http_response{sc, {}, {}}; }
 
 http_response create_response(status_code sc, std::string_view content_type, std::string body) {
-    header h{"Content-type", std::string{content_type}};
-    headers headers = {std::move(h)};
+    headers headers = {//
+            header{"Content-type", std::string{content_type}},
+            header{"Content-Length", std::to_string(body.size())}};
     return http_response{sc, std::move(headers), std::move(body)};
 }
 

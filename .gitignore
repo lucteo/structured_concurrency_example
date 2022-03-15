@@ -36,3 +36,5 @@ build/
 
 # Project files
 .idea/
+
+test_data/

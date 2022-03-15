@@ -32,6 +32,8 @@ set(sourceFiles
 
     src/main.cpp
     src/parsed_uri.cpp
+    src/handle_transform_requests.cpp
+    src/img_transform.cpp
     )
 
 add_executable(image_server ${sourceFiles})
