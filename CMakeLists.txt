@@ -31,6 +31,9 @@ set(sourceFiles
     src/io/connection.cpp
 
     src/main.cpp
+    src/parsed_uri.cpp
+    src/handle_transform_requests.cpp
+    src/img_transform.cpp
     )
 
 add_executable(image_server ${sourceFiles})
@@ -58,6 +61,15 @@ target_include_directories(image_server PRIVATE
 if (TARGET CONAN_PKG::tracy-interface)
     target_link_libraries(image_server PRIVATE CONAN_PKG::tracy-interface)
     target_compile_definitions(image_server PRIVATE PROFILING_ENABLED=1)
+endif ()
+
+# OpenCV & libcurl
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(DEPS IMPORTED_TARGET opencv4 libcurl)
+if (DEPS_FOUND)
+    target_compile_definitions(image_server PRIVATE HAS_OPENCV=1)
+    target_compile_definitions(image_server PRIVATE HAS_LIBCURL=1)
+    target_link_libraries(image_server PRIVATE PkgConfig::DEPS)
 endif ()
 
 # Ensure that we link with the threading library

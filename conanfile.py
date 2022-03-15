@@ -24,6 +24,9 @@ class StructuredConcurrencyExampleRecipe(ConanFile):
       self.version = "0.1.0"
 
    def build_requirements(self):
+      # TODO: for some reason these doesn't work
+      # self.build_requires("libcurl/7.80.0")
+      # self.build_requires("opencv/4.5.3")
       if self.options.with_profiling:
          self.build_requires("tracy-interface/0.1.0")
 
