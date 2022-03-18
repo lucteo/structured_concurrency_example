@@ -22,7 +22,7 @@ namespace ex = std::execution;
 
 auto handle_request(const conn_data& cdata, http_server::http_request req)
         -> task<http_server::http_response> {
-    PROFILING_SCOPE();
+    { PROFILING_SCOPE_N("handle_request -- start"); }
 
 #if HAS_OPENCV
     auto puri = parse_uri(req.uri_);
@@ -34,11 +34,11 @@ auto handle_request(const conn_data& cdata, http_server::http_request req)
     else if (puri.path_ == "/transform/reducecolors")
         co_return handle_reducecolors(cdata, std::move(req), puri);
     else if (puri.path_ == "/transform/cartoonify")
-        co_return handle_cartoonify(cdata, std::move(req), puri);
+        co_return co_await handle_cartoonify(cdata, std::move(req), puri);
     else if (puri.path_ == "/transform/oilpainting")
         co_return handle_oilpainting(cdata, std::move(req), puri);
     else if (puri.path_ == "/transform/contourpaint")
-        co_return handle_contourpaint(cdata, std::move(req), puri);
+        co_return co_await handle_contourpaint(cdata, std::move(req), puri);
 #endif
     co_return http_server::create_response(http_server::status_code::s_404_not_found);
 }

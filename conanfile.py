@@ -3,7 +3,7 @@ import re
 from os import path
 
 class StructuredConcurrencyExampleRecipe(ConanFile):
-   name = "Structured Concurrency Example"
+   name = "structured_concurrency_example"
    description = "example code for using structure concurrency with senders/receivers"
    author = "Lucian Radu Teodorescu"
    topics = ("C++", "concurrency")

@@ -7,7 +7,11 @@
 #include "http_server/http_request.hpp"
 #include "profiling.hpp"
 
+#include <execution.hpp>
+
 #include <opencv2/imgcodecs.hpp>
+
+namespace ex = std::execution;
 
 namespace {
 
@@ -26,6 +30,7 @@ auto get_param_int(const parsed_uri& uri, std::string_view name, int default_val
 }
 
 auto to_cv(const std::string& bytes) -> cv::Mat {
+    PROFILING_SCOPE();
     cv::Mat raw_data(1, bytes.size(), CV_8UC1, (void*)bytes.data());
     return cv::imdecode(raw_data, cv::IMREAD_COLOR);
 }
@@ -79,23 +84,36 @@ auto handle_reducecolors(const conn_data& cdata, http_server::http_request&& req
 }
 
 auto handle_cartoonify(const conn_data& cdata, http_server::http_request&& req, parsed_uri puri)
-        -> http_server::http_response {
-    PROFILING_SCOPE();
+        -> task<http_server::http_response> {
     int blur_size = get_param_int(puri, "blur_size", 3);
     int num_colors = get_param_int(puri, "num_colors", 5);
     int block_size = get_param_int(puri, "block_size", 5);
     int diff = get_param_int(puri, "diff", 5);
 
     auto src = to_cv(req.body_);
-    auto blurred = tr_blur(src, blur_size);
-    auto gray = tr_to_grayscale(blurred);
-    auto edges = tr_adaptthresh(gray, block_size, diff);
 
-    // TODO: run in parallel
-    auto reduced_colors = tr_reducecolors(src, num_colors);
-    auto res = tr_apply_mask(reduced_colors, edges);
-
-    return img_to_response(res);
+    ex::sender auto snd =                                               //
+            ex::when_all(                                               //
+                    ex::transfer_just(cdata.pool_.get_scheduler(), src) //
+                            | ex::then([=](const cv::Mat& src) {
+                                  PROFILING_SCOPE_N("compute edges");
+                                  auto blurred = tr_blur(src, blur_size);
+                                  auto gray = tr_to_grayscale(blurred);
+                                  auto edges = tr_adaptthresh(gray, block_size, diff);
+                                  return edges;
+                              }),
+                    ex::transfer_just(cdata.pool_.get_scheduler(), src) //
+                            | ex::then([=](const cv::Mat& src) {        //
+                                  PROFILING_SCOPE_N("reduce colors");
+                                  return tr_reducecolors(src, num_colors);
+                              })                                                 //
+                    )                                                            //
+            | ex::then([](const cv::Mat& edges, const cv::Mat& reduced_colors) { //
+                  PROFILING_SCOPE_N("apply mask");
+                  return tr_apply_mask(reduced_colors, edges);
+              }) //
+            | ex::then(img_to_response);
+    co_return co_await std::move(snd);
 }
 
 auto handle_oilpainting(const conn_data& cdata, http_server::http_request&& req, parsed_uri puri)
@@ -109,8 +127,7 @@ auto handle_oilpainting(const conn_data& cdata, http_server::http_request&& req,
 }
 
 auto handle_contourpaint(const conn_data& cdata, http_server::http_request&& req, parsed_uri puri)
-        -> http_server::http_response {
-    PROFILING_SCOPE();
+        -> task<http_server::http_response> {
     int blur_size = get_param_int(puri, "blur_size", 3);
     int block_size = get_param_int(puri, "block_size", 5);
     int diff = get_param_int(puri, "diff", 5);
@@ -119,13 +136,28 @@ auto handle_contourpaint(const conn_data& cdata, http_server::http_request&& req
 
     auto src = to_cv(req.body_);
 
-    auto blurred = tr_blur(src, blur_size);
-    auto gray = tr_to_grayscale(blurred);
-    auto edges = tr_adaptthresh(gray, block_size, diff);
-    // TODO: in parallel
-    auto colors = tr_oilpainting(src, oil_size, dyn_ratio);
-    auto res = tr_apply_mask(colors, edges);
-    return img_to_response(res);
+    ex::sender auto snd =                                               //
+            ex::when_all(                                               //
+                    ex::transfer_just(cdata.pool_.get_scheduler(), src) //
+                            | ex::then([=](const cv::Mat& src) {
+                                  PROFILING_SCOPE_N("compute edges");
+                                  auto blurred = tr_blur(src, blur_size);
+                                  auto gray = tr_to_grayscale(blurred);
+                                  auto edges = tr_adaptthresh(gray, block_size, diff);
+                                  return edges;
+                              }),
+                    ex::transfer_just(cdata.pool_.get_scheduler(), src) //
+                            | ex::then([=](const cv::Mat& src) {        //
+                                  PROFILING_SCOPE_N("oil painting");
+                                  return tr_oilpainting(src, oil_size, dyn_ratio);
+                              })                                                 //
+                    )                                                            //
+            | ex::then([](const cv::Mat& edges, const cv::Mat& reduced_colors) { //
+                  PROFILING_SCOPE_N("apply mask");
+                  return tr_apply_mask(reduced_colors, edges);
+              }) //
+            | ex::then(img_to_response);
+    co_return co_await std::move(snd);
 }
 
 #else
@@ -146,8 +178,8 @@ auto handle_reducecolors(const conn_data& cdata, http_server::http_request&& req
 }
 
 auto handle_cartoonify(const conn_data& cdata, http_server::http_request&& req, parsed_uri puri)
-        -> http_server::http_response {
-    return http_server::create_response(http_server::status_code::s_500_internal_server_error);
+        -> task<http_server::http_response> {
+    co_return http_server::create_response(http_server::status_code::s_500_internal_server_error);
 }
 
 auto handle_oilpainting(const conn_data& cdata, http_server::http_request&& req, parsed_uri puri)
@@ -156,8 +188,8 @@ auto handle_oilpainting(const conn_data& cdata, http_server::http_request&& req,
 }
 
 auto handle_contourpaint(const conn_data& cdata, http_server::http_request&& req, parsed_uri puri)
-        -> http_server::http_response {
-    return http_server::create_response(http_server::status_code::s_500_internal_server_error);
+        -> task<http_server::http_response> {
+    co_return http_server::create_response(http_server::status_code::s_500_internal_server_error);
 }
 
 #endif
