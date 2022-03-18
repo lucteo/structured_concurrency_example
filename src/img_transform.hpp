@@ -13,8 +13,6 @@ auto tr_blur(const cv::Mat& src, int size) -> cv::Mat;
 auto tr_to_grayscale(const cv::Mat& src) -> cv::Mat;
 auto tr_adaptthresh(const cv::Mat& src, int block_size, int diff) -> cv::Mat;
 auto tr_reducecolors(const cv::Mat& src, int num_colors) -> cv::Mat;
-auto tr_cartoonify(const cv::Mat& src) -> cv::Mat;
 auto tr_oilpainting(const cv::Mat& src, int size, int dyn_ratio) -> cv::Mat;
-auto tr_contourpaint(const cv::Mat& src) -> cv::Mat;
 
 #endif
