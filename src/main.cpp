@@ -13,6 +13,7 @@
 #include <signal.h>
 
 namespace ex = std::execution;
+using example::static_thread_pool;
 
 //! Returns a sender for an HTTP response with 500 status code
 auto just_500_response() {
@@ -40,8 +41,7 @@ auto handle_connection(const conn_data& cdata) {
              });
 }
 
-auto listener(unsigned short port, io::io_context& ctx, example::static_thread_pool& pool)
-        -> task<bool> {
+auto listener(int port, io::io_context& ctx, static_thread_pool& pool) -> task<bool> {
     // Create a listening socket
     io::listening_socket listen_sock;
     listen_sock.bind(port);
@@ -89,10 +89,10 @@ auto set_sig_handler(io::io_context& ctx, int signo) -> void {
 auto get_main_sender() {
     return ex::just() | ex::then([] {
         PROFILING_SCOPE();
-        unsigned short port = 8080;
+        int port = 8080;
 
         // Create a pool of threads to handle most of the work
-        example::static_thread_pool pool{8};
+        static_thread_pool pool{8};
 
         // Create the I/O context object, used to handle async I/O
         io::io_context ctx;
@@ -109,6 +109,6 @@ auto get_main_sender() {
 }
 
 auto main() -> int {
-    std::this_thread::sync_wait(get_main_sender());
-    return 0;
+    auto [r] = std::this_thread::sync_wait(get_main_sender()).value();
+    return r;
 }
